@@ -4,7 +4,7 @@ from collections import namedtuple
 
 # We should aspire to create batches of less than 15 python files
 # although this is not a strict limit
-MAX_FILE_NUMBER = 15
+MAX_FILE_NUMBER = 10
 
 class Batch(object):
     """
@@ -29,6 +29,10 @@ class Batch(object):
 
     def add(self, file_path):
         self.files.append(file_path)
+        self.rebalance_root()
+
+    def remove(self, file_path):
+        self.files.remove(file_path)
         self.rebalance_root()
 
     def contains_file(self, file_path):
@@ -88,6 +92,10 @@ class Batch(object):
         return any(map(lambda d: d in self.directories, dirs))
 
     def base_similar(self, other_root):
+        """
+        determine if this batch has a root that is similar to another- that is,
+        it is either the same, is a subdirectory, or they share a common parent
+        """
         if self.root == other_root:
             return True
         elif self.root.split('/')[:-1] == other_root:
@@ -100,6 +108,9 @@ class Batch(object):
             return False
 
 def check_if_blocked(batches, root, dirs):
+    """
+    djfdj
+    """
     paths = [os.path.join(root, d) for d in dirs]
     return any(map(lambda b: b.blocks(paths), batches))
 
@@ -143,11 +154,10 @@ def crawl(path, LIMIT):
         batches.append(current_batch)
     return batches
 
-
 def main():
     path = sys.argv[1]
     batches = crawl(path, MAX_FILE_NUMBER)
-    with open('output', 'w') as out:
+    with open('output.csv', 'w') as out:
         out.write('BLOCKED, NUMBER OF PYTHON FILES, DIRECTORIES')
         out.write('\n')
         for b in batches:
