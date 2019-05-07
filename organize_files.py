@@ -2,22 +2,21 @@ import os
 import sys
 from collections import namedtuple
 
-# CONDITIONS:
-## 1) go into a node, fill batch, close off batch
-## 2) go into a node, add files, proceed to next batch, fill, and close off
-## 3) go into a node, fill batch, but determine that subdirs exist and are batched, close off and mark as not ready for work
-# 4) go into a node, fill batch, mark as overflow
-# 5) go into a node, fill batch, determine that can't be balanced well
-
-
-
-
+# We should aspire to create batches of less than 15 python files
+# although this is not a strict limit
 MAX_FILE_NUMBER = 15
-
 
 class Batch(object):
     """
-    representation of a `batch` of python files, pulled
+    representation of a `batch` of python files for ticketing purposes
+
+    the `root` of the batch is the greatest common path, given a list of
+    files
+
+    a batch is considered `blocked` if there exist other batches that
+    contain files deeper in the path than this batch's root. This value
+    is used to denote the fact this this batch should not be worked on
+    or ticketed until the blocking batch has been completed
     """
 
     def __init__(self, root):
@@ -64,11 +63,12 @@ class Batch(object):
 
     def rebalance_root(self):
         """
+        update the root of this batch after a file has been added, in case
+        their paths differ. For example:
+
+        if this batch had a root of /a/b/c and we add a file from /a/b/d,
+        the newly balanced root should be /a/b
         """
-        # if len(self.directories) < 2:
-            # self.root = self.directories[0]
-            # print self.root
-            # return
         split_dirs = map(lambda d: d.split('/'), self.directories)
         new_root = []
         for level in zip(*split_dirs):
@@ -87,17 +87,27 @@ class Batch(object):
         """
         return any(map(lambda d: d in self.directories, dirs))
 
+    def base_similar(self, other_root):
+        if self.root == other_root:
+            return True
+        elif self.root.split('/')[:-1] == other_root:
+            return True
+        elif self.root.split('/')[:-1] == other_root.split('/')[:-1]:
+            return True
+        elif other_root in self.root:
+            return True
+        else:
+            return False
+
 def check_if_blocked(batches, root, dirs):
     paths = [os.path.join(root, d) for d in dirs]
     return any(map(lambda b: b.blocks(paths), batches))
-
 
 def filter_python_files(files):
     """
     given a list of files, extract the python files
     """
     return filter(lambda f: f.split('.')[-1] == 'py', files)
-
 
 def crawl(path, LIMIT):
     """
@@ -115,6 +125,12 @@ def crawl(path, LIMIT):
         if not in_a_batch:
             current_batch = Batch(root)
             in_a_batch = True
+        if not current_batch.base_similar(root):
+            batches.append(current_batch)
+            current_batch = Batch(root)
+            in_a_batch = True
+        # mark this batch as `blocked` if any of the subdirectories in the
+        # current node have already been added to the list of batches
         if check_if_blocked(batches, root, dirs):
             current_batch.blocked = True
         python_files = [os.path.join(root, f) for f in filter_python_files(files)]
@@ -128,13 +144,16 @@ def crawl(path, LIMIT):
     return batches
 
 
-
 def main():
     path = sys.argv[1]
     batches = crawl(path, MAX_FILE_NUMBER)
-    for b in batches:
-        print "{} :: {} :: {} :: {}".format(b.root, len(b.top_level_directories), b.file_count(), b.blocked)
-
+    with open('output', 'w') as out:
+        out.write('BLOCKED, NUMBER OF PYTHON FILES, DIRECTORIES')
+        out.write('\n')
+        for b in batches:
+            dirs = ':'.join(b.top_level_directories)
+            out.write('{},{},{}'.format(b.blocked, b.file_count(), dirs))
+            out.write('\n')
 
 if __name__ == '__main__':
     main()
